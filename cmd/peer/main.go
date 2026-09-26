@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 
@@ -46,32 +47,52 @@ func startServer() {
 
 	fmt.Println("Peer connected!")
 
-	var message protocol.Message
+	var request protocol.Message
 
-	err = json.NewDecoder(conn).Decode(&message)
+	err = json.NewDecoder(conn).Decode(&request)
 	if err != nil {
-		fmt.Println("Error decoding message:", err)
+		fmt.Println("Error decoding request:", err)
 		return
 	}
 
-	fmt.Println("Message received:")
-	fmt.Println("Type:", message.Type)
-	fmt.Println("Peer ID:", message.PeerID)
-	fmt.Println("Data:", message.Data)
+	fmt.Println("File requested:", request.FileName)
 
-	reply := protocol.Message{
-		Type:   protocol.TextMessage,
-		PeerID: "peer-a",
-		Data:   "Hello from Peer A!",
-	}
-
-	err = json.NewEncoder(conn).Encode(reply)
+	file, err := os.Open("shared/" + request.FileName)
 	if err != nil {
-		fmt.Println("Error sending reply:", err)
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		fmt.Println("Error reading file information:", err)
 		return
 	}
 
-	fmt.Println("Reply sent!")
+	fileInfo := protocol.Message{
+		Type:     protocol.FileInfo,
+		PeerID:   "peer-a",
+		FileName: info.Name(),
+		FileSize: info.Size(),
+	}
+
+	err = json.NewEncoder(conn).Encode(fileInfo)
+	if err != nil {
+		fmt.Println("Error sending file information:", err)
+		return
+	}
+
+	fmt.Println("Sending file:", info.Name())
+	fmt.Println("File size:", info.Size(), "bytes")
+
+	_, err = io.Copy(conn, file)
+	if err != nil {
+		fmt.Println("Error sending file:", err)
+		return
+	}
+
+	fmt.Println("File sent successfully!")
 }
 
 func startClient() {
@@ -84,30 +105,43 @@ func startClient() {
 
 	fmt.Println("Connected to Peer A!")
 
-	message := protocol.Message{
-		Type:   protocol.Handshake,
-		PeerID: "peer-b",
-		Data:   "Hello from Peer B!",
+	request := protocol.Message{
+		Type:     protocol.FileRequest,
+		PeerID:   "peer-b",
+		FileName: "test.txt",
 	}
 
-	err = json.NewEncoder(conn).Encode(message)
+	err = json.NewEncoder(conn).Encode(request)
 	if err != nil {
-		fmt.Println("Error sending message:", err)
+		fmt.Println("Error sending file request:", err)
 		return
 	}
 
-	fmt.Println("Message sent!")
+	fmt.Println("File request sent!")
 
-	var reply protocol.Message
+	var fileInfo protocol.Message
 
-	err = json.NewDecoder(conn).Decode(&reply)
+	err = json.NewDecoder(conn).Decode(&fileInfo)
 	if err != nil {
-		fmt.Println("Error reading reply:", err)
+		fmt.Println("Error reading file information:", err)
 		return
 	}
 
-	fmt.Println("Reply received:")
-	fmt.Println("Type:", reply.Type)
-	fmt.Println("Peer ID:", reply.PeerID)
-	fmt.Println("Data:", reply.Data)
+	fmt.Println("Receiving file:", fileInfo.FileName)
+	fmt.Println("File size:", fileInfo.FileSize, "bytes")
+
+	file, err := os.Create("received_" + fileInfo.FileName)
+	if err != nil {
+		fmt.Println("Error creating output file:", err)
+		return
+	}
+	defer file.Close()
+
+	_, err = io.CopyN(file, conn, fileInfo.FileSize)
+	if err != nil {
+		fmt.Println("Error receiving file:", err)
+		return
+	}
+
+	fmt.Println("File received successfully!")
 }
