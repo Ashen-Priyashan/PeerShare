@@ -110,7 +110,7 @@ The structure will evolve as new features are implemented.
 
 ### Phase 2 — File Sharing
 
-- [ ] File transfer
+- [x] File transfer
 - [ ] File chunking
 - [ ] Chunk reconstruction
 
@@ -139,19 +139,22 @@ The structure will evolve as new features are implemented.
 
 🚧 **Early Development**
 
-The initial P2P communication layer has been implemented.
+The initial P2P communication and basic file transfer layers have been implemented.
 
 Currently, PeerShare can:
 
 - Start a peer as a TCP server
 - Connect to another peer as a TCP client
-- Establish a TCP connection between peers
-- Exchange messages in both directions
-- Use structured protocol messages
-- Encode and decode messages using JSON
-- Identify message types such as `HANDSHAKE` and `MESSAGE`
+- Establish TCP connections between peers
+- Exchange structured messages between peers
+- Encode and decode protocol messages using JSON
+- Perform peer handshakes
+- Request files from another peer
+- Send files between peers over TCP
+- Receive and save transferred files
+- Verify that transferred files are received correctly
 
-The next development goal is to implement **basic file transfer between peers**.
+The next development goal is to implement **file chunking and integrity verification**, allowing large files to be split into smaller pieces and verified using cryptographic hashes.
 
 ---
 
