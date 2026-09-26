@@ -102,27 +102,32 @@ The structure will evolve as new features are implemented.
 ## Roadmap
 
 ### Phase 1 — Basic Networking
+
 - [x] Initial Go project setup
-- [ ] TCP server and client
-- [ ] Peer-to-peer connection
-- [ ] Basic message exchange
+- [x] TCP server and client
+- [x] Peer-to-peer connection
+- [x] Basic message exchange
 
 ### Phase 2 — File Sharing
+
 - [ ] File transfer
 - [ ] File chunking
 - [ ] Chunk reconstruction
 
 ### Phase 3 — Distributed Sharing
+
 - [ ] Multiple peer connections
 - [ ] Peer discovery
 - [ ] Parallel chunk downloads
 
 ### Phase 4 — Reliability
+
 - [ ] SHA-256 verification
 - [ ] Failed chunk retry
 - [ ] Resume interrupted downloads
 
 ### Phase 5 — Improvements
+
 - [ ] Transfer statistics
 - [ ] Better peer selection
 - [ ] Network monitoring
@@ -134,9 +139,19 @@ The structure will evolve as new features are implemented.
 
 🚧 **Early Development**
 
-The project is currently in the initial setup stage.
+The initial P2P communication layer has been implemented.
 
-The first implementation goal is to establish communication between two peers using TCP sockets.
+Currently, PeerShare can:
+
+- Start a peer as a TCP server
+- Connect to another peer as a TCP client
+- Establish a TCP connection between peers
+- Exchange messages in both directions
+- Use structured protocol messages
+- Encode and decode messages using JSON
+- Identify message types such as `HANDSHAKE` and `MESSAGE`
+
+The next development goal is to implement **basic file transfer between peers**.
 
 ---
 
