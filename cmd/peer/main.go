@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -47,9 +46,7 @@ func startServer() {
 
 	fmt.Println("Peer connected!")
 
-	var request protocol.Message
-
-	err = json.NewDecoder(conn).Decode(&request)
+	request, err := protocol.ReadMessage(conn)
 	if err != nil {
 		fmt.Println("Error decoding request:", err)
 		return
@@ -77,7 +74,7 @@ func startServer() {
 		FileSize: info.Size(),
 	}
 
-	err = json.NewEncoder(conn).Encode(fileInfo)
+	err = protocol.WriteMessage(conn, fileInfo)
 	if err != nil {
 		fmt.Println("Error sending file information:", err)
 		return
@@ -111,7 +108,7 @@ func startClient() {
 		FileName: "test.txt",
 	}
 
-	err = json.NewEncoder(conn).Encode(request)
+	err = protocol.WriteMessage(conn, request)
 	if err != nil {
 		fmt.Println("Error sending file request:", err)
 		return
@@ -119,9 +116,7 @@ func startClient() {
 
 	fmt.Println("File request sent!")
 
-	var fileInfo protocol.Message
-
-	err = json.NewDecoder(conn).Decode(&fileInfo)
+	fileInfo, err := protocol.ReadMessage(conn)
 	if err != nil {
 		fmt.Println("Error reading file information:", err)
 		return
