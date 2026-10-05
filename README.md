@@ -63,6 +63,8 @@ The requester compares file metadata and whole-file digests from discovered peer
 - **Resumable downloads** that retain verified chunks across interrupted runs
 - **Transfer summary** with file size, chunk count, candidate peers, elapsed time, and average throughput
 - **Latency-ranked peer selection** across up to 32 probed candidates, limited to matching file digests
+- **Peer monitoring** with repeated LAN discovery and protocol-level health checks
+- **CLI validation** with actionable usage errors and configurable shared directories
 
 ---
 
@@ -131,8 +133,8 @@ The structure will evolve as new features are implemented.
 
 - [x] Transfer statistics
 - [x] Concurrent peer probing and latency-based selection
-- [ ] Network monitoring
-- [ ] Improved CLI
+- [x] Network monitoring for discovered peer reachability
+- [x] Improved CLI commands and error reporting
 
 ---
 
@@ -156,6 +158,8 @@ Currently, PeerShare can:
 - Reconstruct the received file and publish it after the full transfer completes
 
 Interrupted downloads keep a `.peershare.partial` file and a `.peershare.state` manifest beside the requested output. On a later run, PeerShare checks the file identity and rehashes saved chunks before reusing them. Both files are removed when the verified download is published.
+
+Use `peer monitor` to periodically discover peers and check protocol-level health over TCP. Pass `-once` for a single scan, or configure `-discover`, `-interval`, `-discover-timeout`, and `-probe-timeout` for a monitoring session.
 
 ---
 
@@ -185,7 +189,7 @@ printf 'Hello from PeerShare\n' > shared/test.txt
 Start the server in one terminal:
 
 ```bash
-go run ./cmd/peer server
+go run ./cmd/peer server -shared shared
 ```
 
 Start the client in another terminal from the repository directory:
@@ -198,6 +202,12 @@ The client discovers a peer over the local network and saves the received file a
 
 ```bash
 go run ./cmd/peer client -peer 192.168.1.42:5000 -file test.txt -output received_test.txt
+```
+
+Check LAN peer availability with a single scan:
+
+```bash
+go run ./cmd/peer monitor -once
 ```
 
 ---
