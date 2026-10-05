@@ -2,7 +2,7 @@
 
 A peer-to-peer (P2P) file sharing system built with **Go**.
 
-PeerShare is designed to allow computers to share files directly with each other. Large files are divided into smaller chunks, which can be downloaded from multiple peers and verified using cryptographic hashes.
+PeerShare currently transfers files between two peers over TCP in ordered 1 MiB chunks. The longer-term goal is to add multi-peer downloads, peer discovery, and cryptographic integrity verification.
 
 The project focuses on learning and implementing concepts from **computer networking, distributed systems, and concurrent programming**.
 
@@ -45,16 +45,19 @@ File
  +-- Chunk 4
 ```
 
-Different peers can provide different chunks. Once the required chunks are downloaded, they are verified and combined to reconstruct the original file.
+Currently, one peer requests chunks in order from another peer. Each chunk has an index and byte size, and the receiver writes the chunks to a temporary file before publishing the completed file. Downloading chunks from different peers and verifying their hashes are planned features.
 
 ---
 
-## Key Features
+## Current Features
 
-Planned core features include:
+- **Peer-to-peer communication** using TCP sockets
+- **Length-prefixed JSON protocol messages** with bounded message sizes
+- **Single-peer file transfer** in ordered 1 MiB chunks
+- **Chunk reconstruction** with validation of indices, sizes, and ordering
 
-- **Peer-to-peer communication** using TCP/UDP sockets
-- **File chunking** for large files
+Planned features include:
+
 - **SHA-256 verification** for chunk integrity
 - **Parallel downloads** from multiple peers
 - **Peer discovery**
@@ -69,8 +72,8 @@ Planned core features include:
 | Technology | Purpose |
 |------------|---------|
 | Go | Main programming language |
-| TCP / UDP | Network communication |
-| SHA-256 | File and chunk integrity verification |
+| TCP | Peer communication and file transfer |
+| SHA-256 | Planned file and chunk integrity verification |
 | Git & GitHub | Version control |
 
 ---
@@ -85,10 +88,8 @@ PeerShare/
 │       └── main.go
 │
 ├── internal/
-│   ├── network/
-│   ├── protocol/
-│   ├── peer/
 │   ├── chunk/
+│   ├── protocol/
 │   └── transfer/
 │
 ├── README.md
@@ -111,8 +112,9 @@ The structure will evolve as new features are implemented.
 ### Phase 2 — File Sharing
 
 - [x] File transfer
-- [ ] File chunking
-- [ ] Chunk reconstruction
+- [x] File chunking
+- [x] Chunk reconstruction
+- [x] Length-prefixed protocol messages
 
 ### Phase 3 — Distributed Sharing
 
@@ -139,22 +141,19 @@ The structure will evolve as new features are implemented.
 
 🚧 **Early Development**
 
-The initial P2P communication and basic file transfer layers have been implemented.
+The current demo supports one client and one server peer at a time. The client requests a file, receives its metadata, then requests each chunk in order. The server responds with chunk metadata followed by exactly that chunk's bytes. JSON control messages use a 4-byte big-endian length prefix; the raw payload length is carried in the metadata.
 
 Currently, PeerShare can:
 
 - Start a peer as a TCP server
 - Connect to another peer as a TCP client
 - Establish TCP connections between peers
-- Exchange structured messages between peers
-- Encode and decode protocol messages using JSON
-- Perform peer handshakes
+- Exchange length-prefixed JSON protocol messages
 - Request files from another peer
-- Send files between peers over TCP
-- Receive and save transferred files
-- Verify that transferred files are received correctly
+- Send and receive ordered chunks over TCP
+- Reconstruct the received file and publish it after the full transfer completes
 
-The next development goal is to implement **file chunking and integrity verification**, allowing large files to be split into smaller pieces and verified using cryptographic hashes.
+SHA-256 verification, multiple peer connections, peer discovery, and parallel downloads are not implemented yet.
 
 ---
 
@@ -172,11 +171,28 @@ git clone https://github.com/Ashen-Priyashan/PeerShare.git
 cd PeerShare
 ```
 
-### Run
+### Run the local transfer demo
+
+Create a file in the server's shared directory:
 
 ```bash
-go run ./cmd/peer
+mkdir -p shared
+printf 'Hello from PeerShare\n' > shared/test.txt
 ```
+
+Start the server in one terminal:
+
+```bash
+go run ./cmd/peer server
+```
+
+Start the client in another terminal from the repository directory:
+
+```bash
+go run ./cmd/peer client
+```
+
+The client connects to `localhost:5000` and saves the received file as `received_test.txt`.
 
 ---
 
