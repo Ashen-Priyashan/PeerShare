@@ -59,10 +59,10 @@ The requester compares file metadata and whole-file digests from discovered peer
 - **Concurrent inbound peer transfers** handled independently by the server
 - **LAN peer discovery** over UDP broadcast, with direct-address connection as a fallback
 - **Parallel chunk downloads** from up to eight peers advertising the same file digest
+- **Failed-chunk retries** across compatible peers, with chunk verification before writing
 
 Planned features include:
 
-- **Retry handling** for failed chunks
 - **Resume interrupted downloads**
 
 ---
@@ -125,7 +125,7 @@ The structure will evolve as new features are implemented.
 ### Phase 4 — Reliability
 
 - [x] SHA-256 verification for chunks and completed files
-- [ ] Failed chunk retry
+- [x] Retry failed chunks from compatible peers
 - [ ] Resume interrupted downloads
 
 ### Phase 5 — Improvements
@@ -156,7 +156,7 @@ Currently, PeerShare can:
 - Download chunks concurrently from multiple peers sharing the same whole-file digest
 - Reconstruct the received file and publish it after the full transfer completes
 
-Failed-chunk retries and resuming interrupted downloads are not implemented yet.
+Resuming interrupted downloads is not implemented yet.
 
 ---
 

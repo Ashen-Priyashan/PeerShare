@@ -219,6 +219,74 @@ func TestDownloadFromMultiplePeers(t *testing.T) {
 	}
 }
 
+func TestDownloadRetriesFailedChunkFromAnotherPeer(t *testing.T) {
+	data := bytes.Repeat([]byte("retry me"), int(chunk.DefaultSize/8)+20)
+	addresses := []string{
+		startCorruptChunkPeer(t, "sample.bin", data),
+		startTestPeer(t, "sample.bin", data),
+	}
+	outputPath := filepath.Join(t.TempDir(), "received.bin")
+
+	if err := DownloadFromPeers(addresses, "sample.bin", outputPath); err != nil {
+		t.Fatalf("DownloadFromPeers() error = %v", err)
+	}
+	got, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read downloaded file: %v", err)
+	}
+	if !bytes.Equal(got, data) {
+		t.Fatal("retried download differs from source")
+	}
+}
+
+func startCorruptChunkPeer(t *testing.T, fileName string, data []byte) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				defer conn.Close()
+				request, err := protocol.ReadMessage(conn)
+				if err != nil || request.Type != protocol.FileRequest {
+					return
+				}
+				plan, err := chunk.Plan(int64(len(data)), chunk.DefaultSize)
+				if err != nil {
+					return
+				}
+				info := protocol.Message{Type: protocol.FileInfo, FileName: fileName, FileSize: int64(len(data)), TotalChunks: len(plan), ChunkSize: chunk.DefaultSize, FileSHA256: hashBytes(data)}
+				if protocol.WriteMessage(conn, info) != nil {
+					return
+				}
+				request, err = protocol.ReadMessage(conn)
+				if err != nil || request.Type != protocol.ChunkRequest || request.ChunkIndex < 0 || request.ChunkIndex >= len(plan) {
+					return
+				}
+				fileChunk := plan[request.ChunkIndex]
+				chunkInfo := protocol.Message{Type: protocol.ChunkInfo, ChunkIndex: fileChunk.Index, TotalChunks: len(plan), ChunkSize: fileChunk.Size, ChunkSHA256: strings.Repeat("0", 64)}
+				if protocol.WriteMessage(conn, chunkInfo) != nil {
+					return
+				}
+				_, _ = conn.Write(bytes.Repeat([]byte("x"), int(fileChunk.Size)))
+			}(conn)
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-done
+	})
+	return listener.Addr().String()
+}
+
 func startTestPeer(t *testing.T, fileName string, data []byte) string {
 	t.Helper()
 	sharedDir := t.TempDir()
