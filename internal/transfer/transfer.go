@@ -33,6 +33,12 @@ func Serve(conn io.ReadWriter, sharedDir string) error {
 	if err != nil {
 		return fmt.Errorf("read file request: %w", err)
 	}
+	if request.Type == protocol.Ping {
+		if err := protocol.WriteMessage(conn, protocol.Message{Type: protocol.Pong}); err != nil {
+			return fmt.Errorf("send peer health response: %w", err)
+		}
+		return nil
+	}
 	if request.Type != protocol.FileRequest {
 		return fmt.Errorf("expected %s, got %s", protocol.FileRequest, request.Type)
 	}

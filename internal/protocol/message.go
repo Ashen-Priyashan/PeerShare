@@ -14,6 +14,8 @@ const MaxMessageSize uint32 = 1 << 20
 type MessageType string
 
 const (
+	Ping         MessageType = "PING"
+	Pong         MessageType = "PONG"
 	Handshake    MessageType = "HANDSHAKE"
 	TextMessage  MessageType = "MESSAGE"
 	FileRequest  MessageType = "FILE_REQUEST"
