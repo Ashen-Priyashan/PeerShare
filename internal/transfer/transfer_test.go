@@ -2,6 +2,8 @@ package transfer
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net"
 	"os"
@@ -98,7 +100,8 @@ func TestDownloadRejectsChunkHashMismatch(t *testing.T) {
 			FileName:    "sample.bin",
 			FileSize:    3,
 			TotalChunks: 1,
-			ChunkSize:   3,
+			ChunkSize:   chunk.DefaultSize,
+			FileSHA256:  hashBytes([]byte("bad")),
 		}); err != nil {
 			serverResult <- err
 			return
@@ -136,4 +139,118 @@ func TestDownloadRejectsChunkHashMismatch(t *testing.T) {
 	if len(partials) != 0 {
 		t.Fatalf("partial files remain after rejected chunk: %v", partials)
 	}
+}
+
+func TestDownloadRejectsWholeFileHashMismatch(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	outputPath := filepath.Join(t.TempDir(), "received.bin")
+	serverResult := make(chan error, 1)
+	go func() {
+		if _, err := protocol.ReadMessage(serverConn); err != nil {
+			serverResult <- err
+			return
+		}
+		if err := protocol.WriteMessage(serverConn, protocol.Message{
+			Type:        protocol.FileInfo,
+			FileName:    "sample.bin",
+			FileSize:    3,
+			TotalChunks: 1,
+			ChunkSize:   chunk.DefaultSize,
+			FileSHA256:  hashBytes([]byte("abc")),
+		}); err != nil {
+			serverResult <- err
+			return
+		}
+		if _, err := protocol.ReadMessage(serverConn); err != nil {
+			serverResult <- err
+			return
+		}
+		if err := protocol.WriteMessage(serverConn, protocol.Message{
+			Type:        protocol.ChunkInfo,
+			TotalChunks: 1,
+			ChunkSize:   3,
+			ChunkSHA256: hashBytes([]byte("bad")),
+		}); err != nil {
+			serverResult <- err
+			return
+		}
+		if _, err := io.WriteString(serverConn, "bad"); err != nil {
+			serverResult <- err
+			return
+		}
+		_, err := protocol.ReadMessage(serverConn)
+		serverResult <- err
+	}()
+
+	err := Download(clientConn, "sample.bin", outputPath)
+	if err == nil || !strings.Contains(err.Error(), "completed file SHA-256 mismatch") {
+		t.Fatalf("Download() error = %v, want completed file hash mismatch", err)
+	}
+	if err := <-serverResult; err != nil {
+		t.Fatalf("fake peer error = %v", err)
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("output file exists after hash mismatch; stat error = %v", err)
+	}
+}
+
+func TestDownloadFromMultiplePeers(t *testing.T) {
+	data := bytes.Repeat([]byte("parallel PeerShare data\n"), 140_000)
+	wrongData := bytes.Repeat([]byte("x"), len(data))
+	addresses := []string{
+		startTestPeer(t, "sample.bin", data),
+		startTestPeer(t, "sample.bin", data),
+		startTestPeer(t, "sample.bin", wrongData),
+	}
+	outputPath := filepath.Join(t.TempDir(), "received.bin")
+
+	if err := DownloadFromPeers(addresses, "sample.bin", outputPath); err != nil {
+		t.Fatalf("DownloadFromPeers() error = %v", err)
+	}
+	got, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read downloaded file: %v", err)
+	}
+	if !bytes.Equal(got, data) {
+		t.Fatalf("downloaded data differs: got %d bytes, want %d", len(got), len(data))
+	}
+}
+
+func startTestPeer(t *testing.T, fileName string, data []byte) string {
+	t.Helper()
+	sharedDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(sharedDir, fileName), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				defer conn.Close()
+				_ = Serve(conn, sharedDir)
+			}(conn)
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-done
+	})
+	return listener.Addr().String()
+}
+
+func hashBytes(data []byte) string {
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
 }
