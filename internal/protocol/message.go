@@ -20,6 +20,7 @@ const (
 	FileInfo     MessageType = "FILE_INFO"
 	ChunkRequest MessageType = "CHUNK_REQUEST"
 	ChunkInfo    MessageType = "CHUNK_INFO"
+	TransferDone MessageType = "TRANSFER_DONE"
 )
 
 type Message struct {
@@ -32,6 +33,7 @@ type Message struct {
 	TotalChunks int         `json:"total_chunks,omitempty"`
 	ChunkSize   int64       `json:"chunk_size,omitempty"`
 	ChunkSHA256 string      `json:"chunk_sha256,omitempty"`
+	FileSHA256  string      `json:"file_sha256,omitempty"`
 }
 
 // WriteMessage writes a message as a 4-byte big-endian length followed by JSON.

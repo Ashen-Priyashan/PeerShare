@@ -87,6 +87,7 @@ func startClient(args []string) {
 		return
 	}
 
+	var peerAddresses []string
 	if *peerAddress == "" {
 		peers, err := peer.Discover(*discoveryAddress, *discoveryTimeout)
 		if err != nil {
@@ -98,18 +99,13 @@ func startClient(args []string) {
 			return
 		}
 		fmt.Println("Discovered peers:", strings.Join(peers, ", "))
-		*peerAddress = peers[0]
+		peerAddresses = peers
+	} else {
+		peerAddresses = []string{*peerAddress}
 	}
 
-	conn, err := net.Dial("tcp", *peerAddress)
-	if err != nil {
-		fmt.Println("Error connecting to peer:", err)
-		return
-	}
-	defer conn.Close()
-
-	fmt.Println("Connected to", *peerAddress)
-	if err := transfer.Download(conn, *fileName, *outputPath); err != nil {
+	fmt.Println("Downloading from peers:", strings.Join(peerAddresses, ", "))
+	if err := transfer.DownloadFromPeers(peerAddresses, *fileName, *outputPath); err != nil {
 		fmt.Println("File transfer failed:", err)
 		return
 	}

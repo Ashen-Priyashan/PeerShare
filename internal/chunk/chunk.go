@@ -10,6 +10,10 @@ import (
 // DefaultSize is the default size of each file chunk (1 MiB).
 const DefaultSize int64 = 1 << 20
 
+// MaxChunks caps chunk plans so untrusted file metadata cannot trigger
+// unbounded allocation.
+const MaxChunks = 1 << 20
+
 // Chunk identifies a contiguous range of a file.
 type Chunk struct {
 	Index  int   `json:"index"`
@@ -32,8 +36,8 @@ func Plan(fileSize, chunkSize int64) ([]Chunk, error) {
 	}
 
 	count := 1 + (fileSize-1)/chunkSize
-	if count > int64(^uint(0)>>1) {
-		return nil, errors.New("file requires too many chunks")
+	if count > MaxChunks || count > int64(^uint(0)>>1) {
+		return nil, fmt.Errorf("file requires too many chunks (maximum %d)", MaxChunks)
 	}
 
 	chunks := make([]Chunk, int(count))
