@@ -219,6 +219,23 @@ func TestDownloadFromMultiplePeers(t *testing.T) {
 	}
 }
 
+func TestDownloadFromPeersWithStats(t *testing.T) {
+	data := []byte("statistics test")
+	address := startTestPeer(t, "sample.bin", data)
+	outputPath := filepath.Join(t.TempDir(), "received.bin")
+
+	stats, err := DownloadFromPeersWithStats([]string{address, address}, "sample.bin", outputPath)
+	if err != nil {
+		t.Fatalf("DownloadFromPeersWithStats() error = %v", err)
+	}
+	if stats.SizeBytes != int64(len(data)) || stats.ChunkCount != 1 || stats.PeerCount != 1 {
+		t.Fatalf("unexpected transfer stats: %+v", stats)
+	}
+	if stats.Duration <= 0 || stats.AverageBytesPerSecond <= 0 {
+		t.Fatalf("duration and throughput should be positive: %+v", stats)
+	}
+}
+
 func TestResumeStateKeepsOnlyVerifiedChunks(t *testing.T) {
 	data := bytes.Repeat([]byte("resume data"), int(chunk.DefaultSize/11)+20)
 	plan, err := chunk.Plan(int64(len(data)), chunk.DefaultSize)

@@ -105,9 +105,17 @@ func startClient(args []string) {
 	}
 
 	fmt.Println("Downloading from peers:", strings.Join(peerAddresses, ", "))
-	if err := transfer.DownloadFromPeers(peerAddresses, *fileName, *outputPath); err != nil {
+	stats, err := transfer.DownloadFromPeersWithStats(peerAddresses, *fileName, *outputPath)
+	if err != nil {
 		fmt.Println("File transfer failed:", err)
 		return
 	}
 	fmt.Println("File received successfully:", *outputPath)
+	fmt.Printf("Transfer: %d chunks, %d candidate peers, %.2f MiB in %s (%.2f MiB/s)\n",
+		stats.ChunkCount,
+		stats.PeerCount,
+		float64(stats.SizeBytes)/(1<<20),
+		stats.Duration.Round(time.Millisecond),
+		stats.AverageBytesPerSecond/(1<<20),
+	)
 }
