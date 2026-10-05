@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -19,9 +20,10 @@ import (
 )
 
 const (
-	maxParallelPeers = 8
-	peerDialTimeout  = 5 * time.Second
-	peerReadTimeout  = 2 * time.Minute
+	maxParallelPeers  = 8
+	maxPeerCandidates = 32
+	peerDialTimeout   = 5 * time.Second
+	peerReadTimeout   = 2 * time.Minute
 )
 
 // Serve handles file metadata requests and any number of indexed chunk
@@ -208,54 +210,91 @@ type peerSession struct {
 }
 
 func openPeerSessions(addresses []string, fileName string) ([]peerSession, protocol.Message, []chunk.Chunk, error) {
-	var sessions []peerSession
-	var reference protocol.Message
-	var chunks []chunk.Chunk
-	var failures []error
 	seen := make(map[string]struct{})
-
+	uniqueAddresses := make([]string, 0, min(len(addresses), maxPeerCandidates))
 	for _, address := range addresses {
 		if _, exists := seen[address]; exists {
 			continue
 		}
 		seen[address] = struct{}{}
-
-		conn, err := net.DialTimeout("tcp", address, peerDialTimeout)
-		if err != nil {
-			failures = append(failures, fmt.Errorf("connect to %s: %w", address, err))
-			continue
-		}
-		if err := conn.SetDeadline(time.Now().Add(peerReadTimeout)); err != nil {
-			_ = conn.Close()
-			failures = append(failures, fmt.Errorf("set deadline for %s: %w", address, err))
-			continue
-		}
-		fileInfo, plan, err := requestFileInfo(conn, fileName)
-		if err != nil {
-			_ = conn.Close()
-			failures = append(failures, fmt.Errorf("peer %s: %w", address, err))
-			continue
-		}
-		if len(sessions) == 0 {
-			reference = fileInfo
-			chunks = plan
-		} else if !sameFile(reference, fileInfo) {
-			_ = finishSession(conn)
-			_ = conn.Close()
-			failures = append(failures, fmt.Errorf("peer %s advertises a different file", address))
-			continue
-		}
-		if err := conn.SetDeadline(time.Time{}); err != nil {
-			_ = conn.Close()
-			failures = append(failures, fmt.Errorf("clear deadline for %s: %w", address, err))
-			continue
-		}
-		sessions = append(sessions, peerSession{conn: conn, address: address})
-		if len(sessions) >= maxParallelPeers {
+		uniqueAddresses = append(uniqueAddresses, address)
+		if len(uniqueAddresses) >= maxPeerCandidates {
 			break
 		}
 	}
 
+	type probeResult struct {
+		session peerSession
+		info    protocol.Message
+		chunks  []chunk.Chunk
+		latency time.Duration
+		order   int
+		err     error
+	}
+	results := make(chan probeResult, len(uniqueAddresses))
+	for order, address := range uniqueAddresses {
+		go func(address string, order int) {
+			started := time.Now()
+			conn, err := net.DialTimeout("tcp", address, peerDialTimeout)
+			if err != nil {
+				results <- probeResult{session: peerSession{address: address}, order: order, err: fmt.Errorf("connect: %w", err)}
+				return
+			}
+			if err := conn.SetDeadline(time.Now().Add(peerReadTimeout)); err != nil {
+				_ = conn.Close()
+				results <- probeResult{session: peerSession{address: address}, order: order, err: fmt.Errorf("set deadline: %w", err)}
+				return
+			}
+			info, plan, err := requestFileInfo(conn, fileName)
+			if err == nil {
+				err = conn.SetDeadline(time.Time{})
+			}
+			if err != nil {
+				_ = conn.Close()
+				results <- probeResult{session: peerSession{address: address}, order: order, err: err}
+				return
+			}
+			results <- probeResult{session: peerSession{conn: conn, address: address}, info: info, chunks: plan, latency: time.Since(started), order: order}
+		}(address, order)
+	}
+
+	probes := make([]probeResult, 0, len(uniqueAddresses))
+	var failures []error
+	for range uniqueAddresses {
+		result := <-results
+		if result.err != nil {
+			failures = append(failures, fmt.Errorf("peer %s: %w", result.session.address, result.err))
+			continue
+		}
+		probes = append(probes, result)
+	}
+	if len(probes) == 0 {
+		if len(failures) == 0 {
+			return nil, protocol.Message{}, nil, errors.New("no usable peers found")
+		}
+		return nil, protocol.Message{}, nil, errors.Join(failures...)
+	}
+	sort.Slice(probes, func(i, j int) bool { return probes[i].order < probes[j].order })
+	reference := probes[0].info
+	chunks := probes[0].chunks
+	compatible := make([]probeResult, 0, len(probes))
+	for _, probe := range probes {
+		if !sameFile(reference, probe.info) {
+			_ = probe.session.conn.Close()
+			failures = append(failures, fmt.Errorf("peer %s advertises a different file", probe.session.address))
+			continue
+		}
+		compatible = append(compatible, probe)
+	}
+	sort.Slice(compatible, func(i, j int) bool { return compatible[i].latency < compatible[j].latency })
+	sessions := make([]peerSession, 0, min(len(compatible), maxParallelPeers))
+	for index, probe := range compatible {
+		if index < maxParallelPeers {
+			sessions = append(sessions, probe.session)
+		} else {
+			_ = probe.session.conn.Close()
+		}
+	}
 	if len(sessions) == 0 {
 		if len(failures) == 0 {
 			return nil, protocol.Message{}, nil, errors.New("no usable peers found")
