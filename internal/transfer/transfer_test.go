@@ -2,9 +2,11 @@ package transfer
 
 import (
 	"bytes"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Ashen-Priyashan/PeerShare/internal/chunk"
@@ -75,5 +77,63 @@ func TestServeRejectsPathTraversal(t *testing.T) {
 	}
 	if err := <-serverResult; err == nil {
 		t.Fatal("Serve() error = nil, want an error for a path outside the shared directory")
+	}
+}
+
+func TestDownloadRejectsChunkHashMismatch(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	outputDir := t.TempDir()
+	outputPath := filepath.Join(outputDir, "received.bin")
+	serverResult := make(chan error, 1)
+	go func() {
+		if _, err := protocol.ReadMessage(serverConn); err != nil {
+			serverResult <- err
+			return
+		}
+		if err := protocol.WriteMessage(serverConn, protocol.Message{
+			Type:        protocol.FileInfo,
+			FileName:    "sample.bin",
+			FileSize:    3,
+			TotalChunks: 1,
+			ChunkSize:   3,
+		}); err != nil {
+			serverResult <- err
+			return
+		}
+		if _, err := protocol.ReadMessage(serverConn); err != nil {
+			serverResult <- err
+			return
+		}
+		if err := protocol.WriteMessage(serverConn, protocol.Message{
+			Type:        protocol.ChunkInfo,
+			TotalChunks: 1,
+			ChunkSize:   3,
+			ChunkSHA256: strings.Repeat("0", 64),
+		}); err != nil {
+			serverResult <- err
+			return
+		}
+		_, err := io.WriteString(serverConn, "bad")
+		serverResult <- err
+	}()
+
+	if err := Download(clientConn, "sample.bin", outputPath); err == nil {
+		t.Fatal("Download() error = nil, want a chunk hash mismatch error")
+	}
+	if err := <-serverResult; err != nil {
+		t.Fatalf("fake peer error = %v", err)
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("output file exists after rejected chunk; stat error = %v", err)
+	}
+	partials, err := filepath.Glob(filepath.Join(outputDir, ".peershare-*.partial"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(partials) != 0 {
+		t.Fatalf("partial files remain after rejected chunk: %v", partials)
 	}
 }
