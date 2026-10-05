@@ -14,18 +14,23 @@ const MaxMessageSize uint32 = 1 << 20
 type MessageType string
 
 const (
-	Handshake   MessageType = "HANDSHAKE"
-	TextMessage MessageType = "MESSAGE"
-	FileRequest MessageType = "FILE_REQUEST"
-	FileInfo    MessageType = "FILE_INFO"
+	Handshake    MessageType = "HANDSHAKE"
+	TextMessage  MessageType = "MESSAGE"
+	FileRequest  MessageType = "FILE_REQUEST"
+	FileInfo     MessageType = "FILE_INFO"
+	ChunkRequest MessageType = "CHUNK_REQUEST"
+	ChunkInfo    MessageType = "CHUNK_INFO"
 )
 
 type Message struct {
-	Type     MessageType `json:"type"`
-	PeerID   string      `json:"peer_id"`
-	Data     string      `json:"data"`
-	FileName string      `json:"file_name,omitempty"`
-	FileSize int64       `json:"file_size,omitempty"`
+	Type        MessageType `json:"type"`
+	PeerID      string      `json:"peer_id"`
+	Data        string      `json:"data"`
+	FileName    string      `json:"file_name,omitempty"`
+	FileSize    int64       `json:"file_size,omitempty"`
+	ChunkIndex  int         `json:"chunk_index,omitempty"`
+	TotalChunks int         `json:"total_chunks,omitempty"`
+	ChunkSize   int64       `json:"chunk_size,omitempty"`
 }
 
 // WriteMessage writes a message as a 4-byte big-endian length followed by JSON.
