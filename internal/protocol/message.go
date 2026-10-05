@@ -31,6 +31,7 @@ type Message struct {
 	ChunkIndex  int         `json:"chunk_index,omitempty"`
 	TotalChunks int         `json:"total_chunks,omitempty"`
 	ChunkSize   int64       `json:"chunk_size,omitempty"`
+	ChunkSHA256 string      `json:"chunk_sha256,omitempty"`
 }
 
 // WriteMessage writes a message as a 4-byte big-endian length followed by JSON.

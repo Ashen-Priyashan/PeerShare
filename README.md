@@ -55,10 +55,10 @@ Currently, one peer requests chunks in order from another peer. Each chunk has a
 - **Length-prefixed JSON protocol messages** with bounded message sizes
 - **Single-peer file transfer** in ordered 1 MiB chunks
 - **Chunk reconstruction** with validation of indices, sizes, and ordering
+- **Per-chunk SHA-256 checks** before a received file is published
 
 Planned features include:
 
-- **SHA-256 verification** for chunk integrity
 - **Parallel downloads** from multiple peers
 - **Peer discovery**
 - **Concurrent file transfers**
@@ -73,7 +73,7 @@ Planned features include:
 |------------|---------|
 | Go | Main programming language |
 | TCP | Peer communication and file transfer |
-| SHA-256 | Planned file and chunk integrity verification |
+| SHA-256 | Verify each transferred chunk |
 | Git & GitHub | Version control |
 
 ---
@@ -124,7 +124,7 @@ The structure will evolve as new features are implemented.
 
 ### Phase 4 — Reliability
 
-- [ ] SHA-256 verification
+- [x] SHA-256 verification for transferred chunks
 - [ ] Failed chunk retry
 - [ ] Resume interrupted downloads
 
@@ -141,7 +141,7 @@ The structure will evolve as new features are implemented.
 
 🚧 **Early Development**
 
-The current demo supports one client and one server peer at a time. The client requests a file, receives its metadata, then requests each chunk in order. The server responds with chunk metadata followed by exactly that chunk's bytes. JSON control messages use a 4-byte big-endian length prefix; the raw payload length is carried in the metadata.
+The current demo supports one client and one server peer at a time. The client requests a file, receives its metadata, then requests each chunk in order. The server responds with chunk metadata (including the chunk's SHA-256 digest) followed by exactly that chunk's bytes. The client checks each digest before publishing the completed file. JSON control messages use a 4-byte big-endian length prefix; the raw payload length is carried in the metadata.
 
 Currently, PeerShare can:
 
@@ -153,7 +153,7 @@ Currently, PeerShare can:
 - Send and receive ordered chunks over TCP
 - Reconstruct the received file and publish it after the full transfer completes
 
-SHA-256 verification, multiple peer connections, peer discovery, and parallel downloads are not implemented yet.
+Whole-file hashes, multiple peer connections, peer discovery, and parallel downloads are not implemented yet.
 
 ---
 
