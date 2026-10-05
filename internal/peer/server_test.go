@@ -5,8 +5,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Ashen-Priyashan/PeerShare/internal/transfer"
 )
@@ -101,5 +103,38 @@ func TestServeHandlesConcurrentPeers(t *testing.T) {
 	case err := <-serverErrors:
 		t.Fatalf("peer handler error = %v", err)
 	default:
+	}
+}
+
+func TestDiscoveryFindsPeer(t *testing.T) {
+	address, err := net.ResolveUDPAddr("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := net.ListenUDP("udp4", address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	serverResult := make(chan error, 1)
+	go func() {
+		serverResult <- ServeDiscovery(conn, 5000)
+	}()
+
+	peers, err := Discover(conn.LocalAddr().String(), time.Second)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	want := net.JoinHostPort("127.0.0.1", strconv.Itoa(5000))
+	if len(peers) != 1 || peers[0] != want {
+		t.Fatalf("Discover() = %v, want [%s]", peers, want)
+	}
+
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverResult; err != nil {
+		t.Fatalf("ServeDiscovery() error = %v", err)
 	}
 }
