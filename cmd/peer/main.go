@@ -2,11 +2,10 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"os"
 
-	"github.com/Ashen-Priyashan/PeerShare/internal/protocol"
+	"github.com/Ashen-Priyashan/PeerShare/internal/transfer"
 )
 
 func main() {
@@ -46,49 +45,10 @@ func startServer() {
 
 	fmt.Println("Peer connected!")
 
-	request, err := protocol.ReadMessage(conn)
-	if err != nil {
-		fmt.Println("Error decoding request:", err)
+	if err := transfer.Serve(conn, "shared"); err != nil {
+		fmt.Println("File transfer failed:", err)
 		return
 	}
-
-	fmt.Println("File requested:", request.FileName)
-
-	file, err := os.Open("shared/" + request.FileName)
-	if err != nil {
-		fmt.Println("Error opening file:", err)
-		return
-	}
-	defer file.Close()
-
-	info, err := file.Stat()
-	if err != nil {
-		fmt.Println("Error reading file information:", err)
-		return
-	}
-
-	fileInfo := protocol.Message{
-		Type:     protocol.FileInfo,
-		PeerID:   "peer-a",
-		FileName: info.Name(),
-		FileSize: info.Size(),
-	}
-
-	err = protocol.WriteMessage(conn, fileInfo)
-	if err != nil {
-		fmt.Println("Error sending file information:", err)
-		return
-	}
-
-	fmt.Println("Sending file:", info.Name())
-	fmt.Println("File size:", info.Size(), "bytes")
-
-	_, err = io.Copy(conn, file)
-	if err != nil {
-		fmt.Println("Error sending file:", err)
-		return
-	}
-
 	fmt.Println("File sent successfully!")
 }
 
@@ -102,39 +62,8 @@ func startClient() {
 
 	fmt.Println("Connected to Peer A!")
 
-	request := protocol.Message{
-		Type:     protocol.FileRequest,
-		PeerID:   "peer-b",
-		FileName: "test.txt",
-	}
-
-	err = protocol.WriteMessage(conn, request)
-	if err != nil {
-		fmt.Println("Error sending file request:", err)
-		return
-	}
-
-	fmt.Println("File request sent!")
-
-	fileInfo, err := protocol.ReadMessage(conn)
-	if err != nil {
-		fmt.Println("Error reading file information:", err)
-		return
-	}
-
-	fmt.Println("Receiving file:", fileInfo.FileName)
-	fmt.Println("File size:", fileInfo.FileSize, "bytes")
-
-	file, err := os.Create("received_" + fileInfo.FileName)
-	if err != nil {
-		fmt.Println("Error creating output file:", err)
-		return
-	}
-	defer file.Close()
-
-	_, err = io.CopyN(file, conn, fileInfo.FileSize)
-	if err != nil {
-		fmt.Println("Error receiving file:", err)
+	if err := transfer.Download(conn, "test.txt", "received_test.txt"); err != nil {
+		fmt.Println("File transfer failed:", err)
 		return
 	}
 
