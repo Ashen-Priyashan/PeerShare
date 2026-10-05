@@ -2,6 +2,7 @@
 package transfer
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -174,7 +175,7 @@ func DownloadFromPeers(addresses []string, fileName, outputPath string) error {
 			workers.Add(1)
 			go func(session peerSession, firstChunk int) {
 				defer workers.Done()
-				workerErrors <- downloadChunks(session.conn, chunks, firstChunk, workerCount, tempFile)
+				workerErrors <- downloadChunks(session, sessions, chunks, firstChunk, workerCount, fileInfo, tempFile)
 			}(session, workerIndex)
 		}
 		workers.Wait()
@@ -202,7 +203,8 @@ func DownloadFromPeers(addresses []string, fileName, outputPath string) error {
 }
 
 type peerSession struct {
-	conn net.Conn
+	conn    net.Conn
+	address string
 }
 
 func openPeerSessions(addresses []string, fileName string) ([]peerSession, protocol.Message, []chunk.Chunk, error) {
@@ -248,7 +250,7 @@ func openPeerSessions(addresses []string, fileName string) ([]peerSession, proto
 			failures = append(failures, fmt.Errorf("clear deadline for %s: %w", address, err))
 			continue
 		}
-		sessions = append(sessions, peerSession{conn: conn})
+		sessions = append(sessions, peerSession{conn: conn, address: address})
 		if len(sessions) >= maxParallelPeers {
 			break
 		}
@@ -315,40 +317,92 @@ func downloadChunk(conn io.ReadWriter, output io.Writer, fileChunk chunk.Chunk, 
 	return nil
 }
 
-func downloadChunks(session net.Conn, chunks []chunk.Chunk, firstChunk, step int, output *os.File) error {
-	defer session.Close()
+func downloadChunks(session peerSession, sessions []peerSession, chunks []chunk.Chunk, firstChunk, step int, fileInfo protocol.Message, output *os.File) error {
+	conn := session.conn
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
+	addresses := peerAddresses(sessions)
 	for i := firstChunk; i < len(chunks); i += step {
 		fileChunk := chunks[i]
-		if err := session.SetDeadline(time.Now().Add(peerReadTimeout)); err != nil {
-			return fmt.Errorf("set chunk %d deadline: %w", fileChunk.Index, err)
+		var err error
+		if conn != nil {
+			if err = conn.SetDeadline(time.Now().Add(peerReadTimeout)); err == nil {
+				err = downloadChunkToFile(conn, output, fileChunk, len(chunks))
+			}
+			if err != nil {
+				_ = conn.Close()
+				conn = nil
+				if retryErr := downloadChunkFromPeers(addresses, fileInfo, fileChunk, output); retryErr != nil {
+					return fmt.Errorf("chunk %d failed on peer %s (%v); retries failed: %w", fileChunk.Index, session.address, err, retryErr)
+				}
+			}
+		} else if err := downloadChunkFromPeers(addresses, fileInfo, fileChunk, output); err != nil {
+			return fmt.Errorf("chunk %d retries failed: %w", fileChunk.Index, err)
 		}
-		if err := protocol.WriteMessage(session, protocol.Message{Type: protocol.ChunkRequest, ChunkIndex: fileChunk.Index}); err != nil {
-			return fmt.Errorf("request chunk %d: %w", fileChunk.Index, err)
+	}
+	if conn != nil {
+		if err := conn.SetDeadline(time.Now().Add(peerDialTimeout)); err != nil {
+			return fmt.Errorf("set transfer completion deadline: %w", err)
 		}
-		chunkInfo, err := protocol.ReadMessage(session)
+		return finishSession(conn)
+	}
+	return nil
+}
+
+func downloadChunkToFile(conn net.Conn, output *os.File, fileChunk chunk.Chunk, total int) error {
+	data := new(bytes.Buffer)
+	if err := downloadChunk(conn, data, fileChunk, total); err != nil {
+		return err
+	}
+	if n, err := output.WriteAt(data.Bytes(), fileChunk.Offset); err != nil {
+		return fmt.Errorf("write chunk %d: %w", fileChunk.Index, err)
+	} else if n != data.Len() {
+		return fmt.Errorf("write chunk %d: %w", fileChunk.Index, io.ErrShortWrite)
+	}
+	return nil
+}
+
+func downloadChunkFromPeers(addresses []string, expected protocol.Message, fileChunk chunk.Chunk, output *os.File) error {
+	var failures []error
+	for _, address := range addresses {
+		conn, err := net.DialTimeout("tcp", address, peerDialTimeout)
 		if err != nil {
-			return fmt.Errorf("read information for chunk %d: %w", fileChunk.Index, err)
+			failures = append(failures, fmt.Errorf("connect to %s: %w", address, err))
+			continue
 		}
-		if err := validateChunkInfo(chunkInfo, fileChunk, len(chunks)); err != nil {
-			return err
+		if err := conn.SetDeadline(time.Now().Add(peerReadTimeout)); err != nil {
+			_ = conn.Close()
+			failures = append(failures, fmt.Errorf("set deadline for %s: %w", address, err))
+			continue
 		}
-		data := make([]byte, int(fileChunk.Size))
-		if _, err := io.ReadFull(session, data); err != nil {
-			return fmt.Errorf("receive chunk %d: %w", fileChunk.Index, err)
+		fileInfo, _, err := requestFileInfo(conn, expected.FileName)
+		if err == nil && !sameFile(expected, fileInfo) {
+			err = errors.New("peer advertises a different file")
 		}
-		if actualHash := sha256.Sum256(data); hex.EncodeToString(actualHash[:]) != chunkInfo.ChunkSHA256 {
-			return fmt.Errorf("chunk %d SHA-256 mismatch", fileChunk.Index)
+		if err == nil {
+			err = downloadChunkToFile(conn, output, fileChunk, expected.TotalChunks)
 		}
-		if n, err := output.WriteAt(data, fileChunk.Offset); err != nil {
-			return fmt.Errorf("write chunk %d: %w", fileChunk.Index, err)
-		} else if n != len(data) {
-			return fmt.Errorf("write chunk %d: %w", fileChunk.Index, io.ErrShortWrite)
+		if err == nil {
+			err = finishSession(conn)
 		}
+		_ = conn.Close()
+		if err == nil {
+			return nil
+		}
+		failures = append(failures, fmt.Errorf("peer %s: %w", address, err))
 	}
-	if err := session.SetDeadline(time.Now().Add(peerDialTimeout)); err != nil {
-		return fmt.Errorf("set transfer completion deadline: %w", err)
+	return errors.Join(failures...)
+}
+
+func peerAddresses(sessions []peerSession) []string {
+	addresses := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		addresses = append(addresses, session.address)
 	}
-	return finishSession(session)
+	return addresses
 }
 
 func validateChunkInfo(info protocol.Message, fileChunk chunk.Chunk, total int) error {
