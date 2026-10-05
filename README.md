@@ -2,7 +2,7 @@
 
 A peer-to-peer (P2P) file sharing system built with **Go**.
 
-PeerShare currently transfers files between two peers over TCP in ordered 1 MiB chunks. The longer-term goal is to add multi-peer downloads, peer discovery, and cryptographic integrity verification.
+PeerShare transfers files over TCP in 1 MiB chunks. It can discover peers on a local network, download chunks concurrently from matching peers, and verify chunk and file contents with SHA-256.
 
 The project focuses on learning and implementing concepts from **computer networking, distributed systems, and concurrent programming**.
 
@@ -45,7 +45,7 @@ File
  +-- Chunk 4
 ```
 
-Currently, one peer requests chunks in order from another peer. Each chunk has an index and byte size, and the receiver writes the chunks to a temporary file before publishing the completed file. Downloading chunks from different peers and verifying their hashes are planned features.
+The requester compares file metadata and whole-file digests from discovered peers, then distributes chunk requests across up to eight matching peers. The receiver verifies each chunk and the completed file before publishing the result.
 
 ---
 
@@ -53,16 +53,15 @@ Currently, one peer requests chunks in order from another peer. Each chunk has a
 
 - **Peer-to-peer communication** using TCP sockets
 - **Length-prefixed JSON protocol messages** with bounded message sizes
-- **Single-peer file transfer** in ordered 1 MiB chunks
+- **Chunked file transfer** over TCP in 1 MiB pieces
 - **Chunk reconstruction** with validation of indices, sizes, and ordering
 - **Per-chunk SHA-256 checks** before a received file is published
 - **Concurrent inbound peer transfers** handled independently by the server
 - **LAN peer discovery** over UDP broadcast, with direct-address connection as a fallback
+- **Parallel chunk downloads** from up to eight peers advertising the same file digest
 
 Planned features include:
 
-- **Parallel downloads** from multiple peers
-- **Peer discovery**
 - **Retry handling** for failed chunks
 - **Resume interrupted downloads**
 
@@ -74,7 +73,7 @@ Planned features include:
 |------------|---------|
 | Go | Main programming language |
 | TCP | Peer communication and file transfer |
-| SHA-256 | Verify each transferred chunk |
+| SHA-256 | Verify chunks and completed files |
 | Git & GitHub | Version control |
 
 ---
@@ -121,11 +120,11 @@ The structure will evolve as new features are implemented.
 
 - [x] Multiple concurrent peer connections to one server
 - [x] LAN peer discovery
-- [ ] Parallel chunk downloads
+- [x] Parallel chunk downloads from matching peers
 
 ### Phase 4 — Reliability
 
-- [x] SHA-256 verification for transferred chunks
+- [x] SHA-256 verification for chunks and completed files
 - [ ] Failed chunk retry
 - [ ] Resume interrupted downloads
 
@@ -142,7 +141,7 @@ The structure will evolve as new features are implemented.
 
 🚧 **Early Development**
 
-The current demo server accepts multiple clients at once and handles each transfer independently. It answers UDP discovery requests on port 5001 and serves files over TCP on port 5000 by default. Each client requests a file, receives its metadata, then requests each chunk in order. The server responds with chunk metadata (including the chunk's SHA-256 digest) followed by exactly that chunk's bytes. The client checks each digest before publishing the completed file. JSON control messages use a 4-byte big-endian length prefix; the raw payload length is carried in the metadata.
+The current demo server accepts multiple clients at once and handles each transfer independently. It answers UDP discovery requests on port 5001 and serves files over TCP on port 5000 by default. Each client discovers peers, compares their file size and SHA-256 identity, and assigns chunk indices across up to eight compatible connections. The server responds to each indexed request with chunk metadata and exactly that chunk's bytes. The client verifies each chunk and the completed file before publishing it. JSON control messages use a 4-byte big-endian length prefix; payload lengths are carried in the metadata.
 
 Currently, PeerShare can:
 
@@ -154,9 +153,10 @@ Currently, PeerShare can:
 - Send and receive ordered chunks over TCP
 - Serve multiple inbound peers concurrently
 - Discover peers on the local network or connect to a specified peer address
+- Download chunks concurrently from multiple peers sharing the same whole-file digest
 - Reconstruct the received file and publish it after the full transfer completes
 
-Whole-file hashes and parallel downloads from multiple peers are not implemented yet.
+Failed-chunk retries and resuming interrupted downloads are not implemented yet.
 
 ---
 
