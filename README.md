@@ -56,12 +56,12 @@ Currently, one peer requests chunks in order from another peer. Each chunk has a
 - **Single-peer file transfer** in ordered 1 MiB chunks
 - **Chunk reconstruction** with validation of indices, sizes, and ordering
 - **Per-chunk SHA-256 checks** before a received file is published
+- **Concurrent inbound peer transfers** handled independently by the server
 
 Planned features include:
 
 - **Parallel downloads** from multiple peers
 - **Peer discovery**
-- **Concurrent file transfers**
 - **Retry handling** for failed chunks
 - **Resume interrupted downloads**
 
@@ -118,7 +118,7 @@ The structure will evolve as new features are implemented.
 
 ### Phase 3 — Distributed Sharing
 
-- [ ] Multiple peer connections
+- [x] Multiple concurrent peer connections to one server
 - [ ] Peer discovery
 - [ ] Parallel chunk downloads
 
@@ -141,7 +141,7 @@ The structure will evolve as new features are implemented.
 
 🚧 **Early Development**
 
-The current demo supports one client and one server peer at a time. The client requests a file, receives its metadata, then requests each chunk in order. The server responds with chunk metadata (including the chunk's SHA-256 digest) followed by exactly that chunk's bytes. The client checks each digest before publishing the completed file. JSON control messages use a 4-byte big-endian length prefix; the raw payload length is carried in the metadata.
+The current demo server accepts multiple clients at once and handles each transfer independently. Each client requests a file, receives its metadata, then requests each chunk in order. The server responds with chunk metadata (including the chunk's SHA-256 digest) followed by exactly that chunk's bytes. The client checks each digest before publishing the completed file. JSON control messages use a 4-byte big-endian length prefix; the raw payload length is carried in the metadata.
 
 Currently, PeerShare can:
 
@@ -151,9 +151,10 @@ Currently, PeerShare can:
 - Exchange length-prefixed JSON protocol messages
 - Request files from another peer
 - Send and receive ordered chunks over TCP
+- Serve multiple inbound peers concurrently
 - Reconstruct the received file and publish it after the full transfer completes
 
-Whole-file hashes, multiple peer connections, peer discovery, and parallel downloads are not implemented yet.
+Whole-file hashes, peer discovery, and parallel downloads from multiple peers are not implemented yet.
 
 ---
 

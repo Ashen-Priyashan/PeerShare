@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 
+	"github.com/Ashen-Priyashan/PeerShare/internal/peer"
 	"github.com/Ashen-Priyashan/PeerShare/internal/transfer"
 )
 
@@ -32,24 +33,15 @@ func startServer() {
 		return
 	}
 	defer listener.Close()
-
 	fmt.Println("PeerShare peer started on port 5000")
-	fmt.Println("Waiting for another peer to connect...")
+	fmt.Println("Waiting for peers to connect...")
 
-	conn, err := listener.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection:", err)
+	if err := peer.Serve(listener, "shared", func(err error) {
+		fmt.Println("Peer transfer failed:", err)
+	}); err != nil {
+		fmt.Println("Peer server stopped:", err)
 		return
 	}
-	defer conn.Close()
-
-	fmt.Println("Peer connected!")
-
-	if err := transfer.Serve(conn, "shared"); err != nil {
-		fmt.Println("File transfer failed:", err)
-		return
-	}
-	fmt.Println("File sent successfully!")
 }
 
 func startClient() {
