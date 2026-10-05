@@ -74,7 +74,10 @@ The requester compares file metadata and whole-file digests from discovered peer
 |------------|---------|
 | Go | Main programming language |
 | TCP | Peer communication and file transfer |
+| UDP | LAN peer discovery |
+| JSON | Framed protocol control messages |
 | SHA-256 | Verify chunks and completed files |
+| Go concurrency | Serve peers and download chunks concurrently |
 | Git & GitHub | Version control |
 
 ---
@@ -90,6 +93,7 @@ PeerShare/
 │
 ├── internal/
 │   ├── chunk/
+│   ├── peer/
 │   ├── protocol/
 │   └── transfer/
 │
@@ -97,7 +101,7 @@ PeerShare/
 └── go.mod
 ```
 
-The structure will evolve as new features are implemented.
+`peer` handles TCP serving, UDP discovery, and peer health checks. `transfer` plans, verifies, retries, resumes, and assembles file chunks. `protocol` defines the framed JSON messages shared by peers.
 
 ---
 
@@ -140,26 +144,22 @@ The structure will evolve as new features are implemented.
 
 ## Current Status
 
-🚧 **Early Development**
+**Desktop prototype — Phases 1–5 complete**
 
-The current demo server accepts multiple clients at once and handles each transfer independently. It answers UDP discovery requests on port 5001 and serves files over TCP on port 5000 by default. Each client discovers peers, compares their file size and SHA-256 identity, and assigns chunk indices across up to eight compatible connections. The server responds to each indexed request with chunk metadata and exactly that chunk's bytes. The client verifies each chunk and the completed file before publishing it. JSON control messages use a 4-byte big-endian length prefix; payload lengths are carried in the metadata.
+The server accepts multiple clients and serves files over TCP on port 5000 by default. UDP discovery listens on port 5001. Clients compare file size and SHA-256 identity, select responsive matching peers, then request indexed chunks over up to eight connections. Control messages use a 4-byte big-endian length prefix; raw chunk payload sizes come from their metadata.
 
-Currently, PeerShare can:
+The desktop prototype supports:
 
-- Start a peer as a TCP server
-- Connect to another peer as a TCP client
-- Establish TCP connections between peers
-- Exchange length-prefixed JSON protocol messages
-- Request files from another peer
-- Send and receive ordered chunks over TCP
-- Serve multiple inbound peers concurrently
-- Discover peers on the local network or connect to a specified peer address
-- Download chunks concurrently from multiple peers sharing the same whole-file digest
-- Reconstruct the received file and publish it after the full transfer completes
+- Single- and multi-peer downloads with chunk and whole-file SHA-256 checks
+- Failed-chunk retries and resume after interruption
+- Throughput summaries and a monitor command for peer health
+- Direct peer addresses when UDP broadcast is unavailable
 
 Interrupted downloads keep a `.peershare.partial` file and a `.peershare.state` manifest beside the requested output. On a later run, PeerShare checks the file identity and rehashes saved chunks before reusing them. Both files are removed when the verified download is published.
 
 Use `peer monitor` to periodically discover peers and check protocol-level health over TCP. Pass `-once` for a single scan, or configure `-discover`, `-interval`, `-discover-timeout`, and `-probe-timeout` for a monitoring session.
+
+All planned desktop roadmap items are complete. Mobile/iPhone support remains future work.
 
 ---
 
@@ -167,7 +167,7 @@ Use `peer monitor` to periodically discover peers and check protocol-level healt
 
 ### Requirements
 
-- Go 1.26 or later
+- Go 1.25 or later
 - Git
 
 ### Clone the Repository
@@ -214,7 +214,7 @@ go run ./cmd/peer monitor -once
 
 ## Learning Goals
 
-This project is being built to gain practical experience with:
+This project demonstrates practical experience with:
 
 - Computer networking
 - TCP/UDP sockets
@@ -229,9 +229,3 @@ This project is being built to gain practical experience with:
 ## Inspiration
 
 PeerShare is inspired by the concepts behind **P2P file-sharing systems such as BitTorrent**, but is being implemented as a smaller learning project from the ground up.
-
----
-
-## Status
-
-🚧 Work in Progress
