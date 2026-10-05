@@ -138,3 +138,43 @@ func TestDiscoveryFindsPeer(t *testing.T) {
 		t.Fatalf("ServeDiscovery() error = %v", err)
 	}
 }
+
+func TestScanReportsReachablePeer(t *testing.T) {
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tcpListener.Close()
+	tcpAddress := tcpListener.Addr().(*net.TCPAddr)
+	go func() {
+		for {
+			conn, err := tcpListener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				defer conn.Close()
+				_ = transfer.Serve(conn, "")
+			}(conn)
+		}
+	}()
+
+	udpAddress, err := net.ResolveUDPAddr("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	discoveryConn, err := net.ListenUDP("udp4", udpAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer discoveryConn.Close()
+	go func() { _ = ServeDiscovery(discoveryConn, tcpAddress.Port) }()
+
+	results, err := Scan(discoveryConn.LocalAddr().String(), time.Second, time.Second)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(results) != 1 || !results[0].Reachable || results[0].Error != "" {
+		t.Fatalf("Scan() = %+v, want one reachable peer", results)
+	}
+}
