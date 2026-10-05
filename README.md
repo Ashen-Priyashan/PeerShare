@@ -62,6 +62,7 @@ The requester compares file metadata and whole-file digests from discovered peer
 - **Failed-chunk retries** across compatible peers, with chunk verification before writing
 - **Resumable downloads** that retain verified chunks across interrupted runs
 - **Transfer summary** with file size, chunk count, candidate peers, elapsed time, and average throughput
+- **Latency-ranked peer selection** across up to 32 probed candidates, limited to matching file digests
 
 ---
 
@@ -129,7 +130,7 @@ The structure will evolve as new features are implemented.
 ### Phase 5 — Improvements
 
 - [x] Transfer statistics
-- [ ] Better peer selection
+- [x] Concurrent peer probing and latency-based selection
 - [ ] Network monitoring
 - [ ] Improved CLI
 

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Ashen-Priyashan/PeerShare/internal/chunk"
 	"github.com/Ashen-Priyashan/PeerShare/internal/protocol"
@@ -217,6 +218,58 @@ func TestDownloadFromMultiplePeers(t *testing.T) {
 	if !bytes.Equal(got, data) {
 		t.Fatalf("downloaded data differs: got %d bytes, want %d", len(got), len(data))
 	}
+}
+
+func TestPeerSelectionPrefersFasterMatchingPeer(t *testing.T) {
+	data := bytes.Repeat([]byte("same file"), 100)
+	addresses := []string{
+		startDelayedTestPeer(t, "sample.bin", data, 150*time.Millisecond),
+		startTestPeer(t, "sample.bin", data),
+		startTestPeer(t, "sample.bin", bytes.Repeat([]byte("other file"), 100)),
+	}
+	sessions, info, _, err := openPeerSessions(addresses, "sample.bin")
+	if err != nil {
+		t.Fatalf("openPeerSessions() error = %v", err)
+	}
+	defer closeSessions(sessions)
+	if info.FileSHA256 != hashBytes(data) {
+		t.Fatal("peer selection changed the requested file identity")
+	}
+	if len(sessions) != 2 || sessions[0].address != addresses[1] {
+		t.Fatalf("sessions were not ranked by response time: %+v", sessions)
+	}
+}
+
+func startDelayedTestPeer(t *testing.T, fileName string, data []byte, delay time.Duration) string {
+	t.Helper()
+	sharedDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(sharedDir, fileName), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				defer conn.Close()
+				time.Sleep(delay)
+				_ = Serve(conn, sharedDir)
+			}(conn)
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-done
+	})
+	return listener.Addr().String()
 }
 
 func TestDownloadFromPeersWithStats(t *testing.T) {
