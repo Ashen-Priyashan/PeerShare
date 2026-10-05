@@ -57,6 +57,7 @@ Currently, one peer requests chunks in order from another peer. Each chunk has a
 - **Chunk reconstruction** with validation of indices, sizes, and ordering
 - **Per-chunk SHA-256 checks** before a received file is published
 - **Concurrent inbound peer transfers** handled independently by the server
+- **LAN peer discovery** over UDP broadcast, with direct-address connection as a fallback
 
 Planned features include:
 
@@ -119,7 +120,7 @@ The structure will evolve as new features are implemented.
 ### Phase 3 — Distributed Sharing
 
 - [x] Multiple concurrent peer connections to one server
-- [ ] Peer discovery
+- [x] LAN peer discovery
 - [ ] Parallel chunk downloads
 
 ### Phase 4 — Reliability
@@ -141,7 +142,7 @@ The structure will evolve as new features are implemented.
 
 🚧 **Early Development**
 
-The current demo server accepts multiple clients at once and handles each transfer independently. Each client requests a file, receives its metadata, then requests each chunk in order. The server responds with chunk metadata (including the chunk's SHA-256 digest) followed by exactly that chunk's bytes. The client checks each digest before publishing the completed file. JSON control messages use a 4-byte big-endian length prefix; the raw payload length is carried in the metadata.
+The current demo server accepts multiple clients at once and handles each transfer independently. It answers UDP discovery requests on port 5001 and serves files over TCP on port 5000 by default. Each client requests a file, receives its metadata, then requests each chunk in order. The server responds with chunk metadata (including the chunk's SHA-256 digest) followed by exactly that chunk's bytes. The client checks each digest before publishing the completed file. JSON control messages use a 4-byte big-endian length prefix; the raw payload length is carried in the metadata.
 
 Currently, PeerShare can:
 
@@ -152,9 +153,10 @@ Currently, PeerShare can:
 - Request files from another peer
 - Send and receive ordered chunks over TCP
 - Serve multiple inbound peers concurrently
+- Discover peers on the local network or connect to a specified peer address
 - Reconstruct the received file and publish it after the full transfer completes
 
-Whole-file hashes, peer discovery, and parallel downloads from multiple peers are not implemented yet.
+Whole-file hashes and parallel downloads from multiple peers are not implemented yet.
 
 ---
 
@@ -193,7 +195,11 @@ Start the client in another terminal from the repository directory:
 go run ./cmd/peer client
 ```
 
-The client connects to `localhost:5000` and saves the received file as `received_test.txt`.
+The client discovers a peer over the local network and saves the received file as `received_test.txt`. To connect directly instead, pass the server address:
+
+```bash
+go run ./cmd/peer client -peer 192.168.1.42:5000 -file test.txt -output received_test.txt
+```
 
 ---
 
