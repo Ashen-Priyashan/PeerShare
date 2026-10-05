@@ -219,6 +219,87 @@ func TestDownloadFromMultiplePeers(t *testing.T) {
 	}
 }
 
+func TestResumeStateKeepsOnlyVerifiedChunks(t *testing.T) {
+	data := bytes.Repeat([]byte("resume data"), int(chunk.DefaultSize/11)+20)
+	plan, err := chunk.Plan(int64(len(data)), chunk.DefaultSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := protocol.Message{FileName: "sample.bin", FileSize: int64(len(data)), ChunkSize: chunk.DefaultSize, TotalChunks: len(plan), FileSHA256: hashBytes(data)}
+	outputPath := filepath.Join(t.TempDir(), "received.bin")
+
+	state, err := openResumableOutput(outputPath, info, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.writeChunk(plan[0], data[:plan[0].Size]); err != nil {
+		t.Fatal(err)
+	}
+	partialPath := state.file.Name()
+	if err := state.close(); err != nil {
+		t.Fatal(err)
+	}
+
+	state, err = openResumableOutput(outputPath, info, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.isComplete(0) || state.isComplete(1) {
+		t.Fatal("resume state did not restore the completed chunk")
+	}
+	if err := state.close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(partialPath, []byte("corrupted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err = openResumableOutput(outputPath, info, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.close()
+	if state.isComplete(0) {
+		t.Fatal("corrupted partial chunk was trusted")
+	}
+}
+
+func TestDownloadFromPeersResumesPartialFile(t *testing.T) {
+	data := bytes.Repeat([]byte("resume across runs"), int(chunk.DefaultSize/18)+30)
+	plan, err := chunk.Plan(int64(len(data)), chunk.DefaultSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := protocol.Message{FileName: "sample.bin", FileSize: int64(len(data)), ChunkSize: chunk.DefaultSize, TotalChunks: len(plan), FileSHA256: hashBytes(data)}
+	outputPath := filepath.Join(t.TempDir(), "received.bin")
+	state, err := openResumableOutput(outputPath, info, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.writeChunk(plan[0], data[:plan[0].Size]); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DownloadFromPeers([]string{startTestPeer(t, "sample.bin", data)}, "sample.bin", outputPath); err != nil {
+		t.Fatalf("DownloadFromPeers() resume error = %v", err)
+	}
+	got, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, data) {
+		t.Fatal("resumed download differs from source")
+	}
+	for _, suffix := range []string{".peershare.partial", ".peershare.state"} {
+		if _, err := os.Stat(outputPath + suffix); !os.IsNotExist(err) {
+			t.Fatalf("resume artifact %s remains after publication", suffix)
+		}
+	}
+}
+
 func TestDownloadRetriesFailedChunkFromAnotherPeer(t *testing.T) {
 	data := bytes.Repeat([]byte("retry me"), int(chunk.DefaultSize/8)+20)
 	addresses := []string{
