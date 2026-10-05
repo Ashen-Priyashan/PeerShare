@@ -57,6 +57,13 @@ func TestPlanRejectsInvalidSizes(t *testing.T) {
 	}
 }
 
+func TestPlanRejectsExcessiveChunkCount(t *testing.T) {
+	fileSize := int64(MaxChunks+1) * 2
+	if _, err := Plan(fileSize, 2); err == nil {
+		t.Fatal("Plan() error = nil, want an error for too many chunks")
+	}
+}
+
 func TestSplitAndReconstruct(t *testing.T) {
 	original := []byte("PeerShare chunk reconstruction")
 	var chunks []Chunk
