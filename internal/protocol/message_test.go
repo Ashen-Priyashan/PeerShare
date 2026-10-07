@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"reflect"
 	"testing"
 )
 
@@ -28,7 +29,7 @@ func TestMessageRoundTripLeavesPayloadUnread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadMessage() error = %v", err)
 	}
-	if got != message {
+	if !reflect.DeepEqual(got, message) {
 		t.Fatalf("ReadMessage() = %#v, want %#v", got, message)
 	}
 	remaining, err := io.ReadAll(&stream)
@@ -51,7 +52,7 @@ func TestReadMessageHandlesFragmentedReads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadMessage() error = %v", err)
 	}
-	if got != message {
+	if !reflect.DeepEqual(got, message) {
 		t.Fatalf("ReadMessage() = %#v, want %#v", got, message)
 	}
 }
@@ -93,7 +94,30 @@ func TestWriteMessageHandlesShortWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadMessage() error = %v", err)
 	}
-	if got != message {
+	if !reflect.DeepEqual(got, message) {
+		t.Fatalf("ReadMessage() = %#v, want %#v", got, message)
+	}
+}
+
+func TestFileListMessageRoundTrip(t *testing.T) {
+	message := Message{
+		Type: FileList,
+		Files: []SharedFile{
+			{Name: "document.txt", Size: 42},
+			{Name: "photo.png", Size: 1024},
+		},
+	}
+
+	var stream bytes.Buffer
+	if err := WriteMessage(&stream, message); err != nil {
+		t.Fatalf("WriteMessage() error = %v", err)
+	}
+
+	got, err := ReadMessage(&stream)
+	if err != nil {
+		t.Fatalf("ReadMessage() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, message) {
 		t.Fatalf("ReadMessage() = %#v, want %#v", got, message)
 	}
 }

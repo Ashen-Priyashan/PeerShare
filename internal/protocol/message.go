@@ -14,28 +14,37 @@ const MaxMessageSize uint32 = 1 << 20
 type MessageType string
 
 const (
-	Ping         MessageType = "PING"
-	Pong         MessageType = "PONG"
-	Handshake    MessageType = "HANDSHAKE"
-	TextMessage  MessageType = "MESSAGE"
-	FileRequest  MessageType = "FILE_REQUEST"
-	FileInfo     MessageType = "FILE_INFO"
-	ChunkRequest MessageType = "CHUNK_REQUEST"
-	ChunkInfo    MessageType = "CHUNK_INFO"
-	TransferDone MessageType = "TRANSFER_DONE"
+	Ping            MessageType = "PING"
+	Pong            MessageType = "PONG"
+	Handshake       MessageType = "HANDSHAKE"
+	TextMessage     MessageType = "MESSAGE"
+	FileRequest     MessageType = "FILE_REQUEST"
+	FileInfo        MessageType = "FILE_INFO"
+	FileListRequest MessageType = "FILE_LIST_REQUEST"
+	FileList        MessageType = "FILE_LIST"
+	ChunkRequest    MessageType = "CHUNK_REQUEST"
+	ChunkInfo       MessageType = "CHUNK_INFO"
+	TransferDone    MessageType = "TRANSFER_DONE"
 )
 
+// SharedFile describes one regular file available from a peer's shared directory.
+type SharedFile struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
 type Message struct {
-	Type        MessageType `json:"type"`
-	PeerID      string      `json:"peer_id"`
-	Data        string      `json:"data"`
-	FileName    string      `json:"file_name,omitempty"`
-	FileSize    int64       `json:"file_size,omitempty"`
-	ChunkIndex  int         `json:"chunk_index,omitempty"`
-	TotalChunks int         `json:"total_chunks,omitempty"`
-	ChunkSize   int64       `json:"chunk_size,omitempty"`
-	ChunkSHA256 string      `json:"chunk_sha256,omitempty"`
-	FileSHA256  string      `json:"file_sha256,omitempty"`
+	Type        MessageType  `json:"type"`
+	PeerID      string       `json:"peer_id"`
+	Data        string       `json:"data"`
+	FileName    string       `json:"file_name,omitempty"`
+	FileSize    int64        `json:"file_size,omitempty"`
+	ChunkIndex  int          `json:"chunk_index,omitempty"`
+	TotalChunks int          `json:"total_chunks,omitempty"`
+	ChunkSize   int64        `json:"chunk_size,omitempty"`
+	ChunkSHA256 string       `json:"chunk_sha256,omitempty"`
+	FileSHA256  string       `json:"file_sha256,omitempty"`
+	Files       []SharedFile `json:"files,omitempty"`
 }
 
 // WriteMessage writes a message as a 4-byte big-endian length followed by JSON.
