@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +61,48 @@ func TestChunkedTransfer(t *testing.T) {
 				t.Fatalf("downloaded data differs: got %d bytes, want %d", len(got), len(tt.data))
 			}
 		})
+	}
+}
+
+func TestListSharedFiles(t *testing.T) {
+	sharedDir := t.TempDir()
+	for name, contents := range map[string]string{
+		"z-last.txt":  "last",
+		"a-first.txt": "first",
+	} {
+		if err := os.WriteFile(filepath.Join(sharedDir, name), []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(sharedDir, "folder"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sharedDir, "folder", "nested.txt"), []byte("nested"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	serverResult := make(chan error, 1)
+	go func() {
+		serverResult <- Serve(serverConn, sharedDir)
+	}()
+
+	files, err := ListSharedFiles(clientConn)
+	if err != nil {
+		t.Fatalf("ListSharedFiles() error = %v", err)
+	}
+	want := []protocol.SharedFile{
+		{Name: "a-first.txt", Size: 5},
+		{Name: "z-last.txt", Size: 4},
+	}
+	if !reflect.DeepEqual(files, want) {
+		t.Fatalf("ListSharedFiles() = %#v, want %#v", files, want)
+	}
+	if err := <-serverResult; err != nil {
+		t.Fatalf("Serve() error = %v", err)
 	}
 }
 

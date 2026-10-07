@@ -39,6 +39,16 @@ func Serve(conn io.ReadWriter, sharedDir string) error {
 		}
 		return nil
 	}
+	if request.Type == protocol.FileListRequest {
+		files, err := listSharedFiles(sharedDir)
+		if err != nil {
+			return err
+		}
+		if err := protocol.WriteMessage(conn, protocol.Message{Type: protocol.FileList, Files: files}); err != nil {
+			return fmt.Errorf("send shared file list: %w", err)
+		}
+		return nil
+	}
 	if request.Type != protocol.FileRequest {
 		return fmt.Errorf("expected %s, got %s", protocol.FileRequest, request.Type)
 	}
@@ -118,6 +128,58 @@ func Serve(conn io.ReadWriter, sharedDir string) error {
 			return fmt.Errorf("send chunk %d: %w", fileChunk.Index, err)
 		}
 	}
+}
+
+// ListSharedFiles requests the regular files available from the connected peer.
+func ListSharedFiles(conn io.ReadWriter) ([]protocol.SharedFile, error) {
+	if err := protocol.WriteMessage(conn, protocol.Message{Type: protocol.FileListRequest}); err != nil {
+		return nil, fmt.Errorf("request shared file list: %w", err)
+	}
+	response, err := protocol.ReadMessage(conn)
+	if err != nil {
+		return nil, fmt.Errorf("read shared file list: %w", err)
+	}
+	if response.Type != protocol.FileList {
+		return nil, fmt.Errorf("expected %s, got %s", protocol.FileList, response.Type)
+	}
+	for _, file := range response.Files {
+		if file.Name == "" || filepath.Base(file.Name) != file.Name || file.Name == "." || file.Size < 0 {
+			return nil, fmt.Errorf("peer returned invalid shared file entry %q", file.Name)
+		}
+	}
+	return response.Files, nil
+}
+
+func listSharedFiles(sharedDir string) ([]protocol.SharedFile, error) {
+	root, err := os.OpenRoot(sharedDir)
+	if err != nil {
+		return nil, fmt.Errorf("open shared directory: %w", err)
+	}
+	defer root.Close()
+
+	directory, err := root.Open(".")
+	if err != nil {
+		return nil, fmt.Errorf("open shared directory contents: %w", err)
+	}
+	defer directory.Close()
+
+	entries, err := directory.ReadDir(-1)
+	if err != nil {
+		return nil, fmt.Errorf("read shared directory: %w", err)
+	}
+	files := make([]protocol.SharedFile, 0, len(entries))
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("read information for shared entry %q: %w", entry.Name(), err)
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		files = append(files, protocol.SharedFile{Name: entry.Name(), Size: info.Size()})
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
+	return files, nil
 }
 
 // Download requests all chunks from one peer and atomically writes the
