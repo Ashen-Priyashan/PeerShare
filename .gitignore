@@ -21,6 +21,10 @@ profile.cov
 # vendor/
 /ui/node_modules/
 /ui/dist/
+/ui/.vite/
+
+# Local files served by a peer; keep test fixtures in dedicated tracked testdata directories.
+/shared/
 
 # Go workspace file
 go.work
