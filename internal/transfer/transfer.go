@@ -150,6 +150,11 @@ func ListSharedFiles(conn io.ReadWriter) ([]protocol.SharedFile, error) {
 	return response.Files, nil
 }
 
+// ListLocalFiles returns regular files in the local shared directory.
+func ListLocalFiles(sharedDir string) ([]protocol.SharedFile, error) {
+	return listSharedFiles(sharedDir)
+}
+
 func listSharedFiles(sharedDir string) ([]protocol.SharedFile, error) {
 	root, err := os.OpenRoot(sharedDir)
 	if err != nil {
