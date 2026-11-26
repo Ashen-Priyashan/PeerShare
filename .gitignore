@@ -22,6 +22,13 @@ profile.cov
 /ui/node_modules/
 /ui/dist/
 /ui/.vite/
+/desktop/app/frontend/node_modules/
+/desktop/app/frontend/dist/*
+!/desktop/app/frontend/dist/.gitkeep
+/desktop/app/frontend/.vite/
+/desktop/app/frontend/bindings/
+/desktop/app/bin/
+/desktop/app/wails_*.syso
 
 # Local files served by a peer; keep test fixtures in dedicated tracked testdata directories.
 /shared/
@@ -30,9 +37,16 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
+# Local environment configuration
 .env
+.env.*
+!.env.example
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
